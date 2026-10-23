@@ -1,82 +1,201 @@
+
 "use client";
-import { useCallback, useEffect, useState } from "react";
+
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 
-const raised = "rounded-3xl bg-[#1A1A1A] shadow-[9px_9px_20px_#0D0D0D,-9px_-9px_20px_#272727]";
-const pressed = "bg-[#1A1A1A] shadow-[inset_4px_4px_9px_#0D0D0D,inset_-4px_-4px_9px_#272727]";
-const redBtn =
-  "rounded-full bg-gradient-to-b from-[#E52200] to-[#C41000] px-5 py-2.5 font-semibold text-white disabled:opacity-50";
-const input = `${pressed} w-full rounded-xl px-4 py-3 text-[#EDEDED] outline-none placeholder:text-[#EDEDED]/40`;
+const raised =
+  "shadow-[5px_5px_12px_rgba(0,0,0,0.5),-3px_-3px_8px_rgba(255,255,255,0.03)]";
 
-type Img = { _id: string; imgUrl: string };
-type Doc = { _id: string; eventName: string; eventDate: string };
+const pressed =
+  "shadow-[inset_4px_4px_9px_rgba(0,0,0,0.45),inset_-3px_-3px_8px_rgba(255,255,255,0.03)]";
+
+const redBtn =
+  "rounded-xl bg-gradient-to-b from-[#E52200] to-[#C41000] px-5 py-3 font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50";
+
+const input =
+  "w-full rounded-xl border border-white/10 bg-[#202020] px-4 py-3 text-[#EDEDED] outline-none placeholder:text-white/40 focus:border-[#E52200]";
+
+type Img = {
+  _id: string;
+  imgUrl: string;
+};
+
+type Doc = {
+  _id: string;
+  eventName: string;
+  eventDate: string;
+};
+
+async function readResponse(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
 
 function ImageSection({
-  title, endpoint, listKey, secret,
-}: { title: string; endpoint: string; listKey: string; secret: string }) {
+  title,
+  endpoint,
+  listKey,
+  secret,
+}: {
+  title: string;
+  endpoint: string;
+  listKey: string;
+  secret: string;
+}) {
   const [items, setItems] = useState<Img[]>([]);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(endpoint, { cache: "no-store" });
-    const data = await res.json();
-    setItems(data[listKey] ?? []);
+    try {
+      const res = await fetch(endpoint, { cache: "no-store" });
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Images load nahi ho paaye.");
+      }
+
+      setItems(Array.isArray(data[listKey]) ? data[listKey] : []);
+    } catch (error) {
+      setMsg(
+        error instanceof Error ? error.message : "Images load nahi ho paaye."
+      );
+    }
   }, [endpoint, listKey]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  async function onUpload(e: React.FormEvent<HTMLFormElement>) {
+  async function onUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     const form = e.currentTarget;
     setBusy(true);
     setMsg("");
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "x-admin-secret": secret },
-      body: new FormData(form),
-    });
-    const data = await res.json();
-    setMsg(data.message || (res.ok ? "Uploaded" : "Upload failed"));
-    if (res.ok) { form.reset(); load(); }
-    setBusy(false);
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "x-admin-secret": secret,
+        },
+        body: new FormData(form),
+      });
+
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Upload failed.");
+      }
+
+      setMsg(data.message || "Upload successful.");
+      form.reset();
+      await load();
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this image?")) return;
-    const res = await fetch(`${endpoint}/${id}`, {
-      method: "DELETE",
-      headers: { "x-admin-secret": secret },
-    });
-    const data = await res.json();
-    setMsg(data.message || "");
-    if (res.ok) load();
+    if (!window.confirm("Delete this image?")) return;
+
+    setMsg("");
+
+    try {
+      const res = await fetch(
+        `${endpoint}/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "x-admin-secret": secret,
+          },
+        }
+      );
+
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Delete failed.");
+      }
+
+      setMsg(data.message || "Image deleted.");
+      await load();
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "Delete failed.");
+    }
   }
 
   return (
-    <section className={`${raised} p-6`}>
-      <h2 className="mb-4 text-xl font-semibold text-[#FF6B4A]">{title}</h2>
-      <form onSubmit={onUpload} className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <input type="file" name="images" accept="image/*" multiple required className={input} />
+    <section className={`rounded-2xl bg-[#1A1A1A] p-5 sm:p-7 ${raised}`}>
+      <h2 className="mb-5 text-xl font-bold text-[#EDEDED]">{title}</h2>
+
+      <form onSubmit={onUpload} className="mb-6 space-y-4">
+        <input
+          className={input}
+          type="file"
+          name="image"
+          accept="image/*"
+          required
+        />
+
         <button type="submit" disabled={busy} className={redBtn}>
-          {busy ? "Uploading..." : "Upload"}
+          {busy ? "Uploading..." : "Upload Image"}
         </button>
       </form>
-      {msg && <p className="mt-3 text-sm text-[#EDEDED]/80">{msg}</p>}
-      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {items.map((img) => (
-          <div key={img._id} className="group relative aspect-square overflow-hidden rounded-xl">
-            <Image src={img.imgUrl} alt="" fill sizes="200px" className="object-cover" />
-            <button
-              onClick={() => onDelete(img._id)}
-              className="absolute right-2 top-2 rounded-full bg-black/70 px-3 py-1 text-xs text-white hover:bg-[#C41000]"
+
+      {msg && (
+        <p
+          role="status"
+          className="mb-4 break-words text-sm text-[#FF8A70]"
+        >
+          {msg}
+        </p>
+      )}
+
+      {items.length === 0 ? (
+        <p className="text-sm text-white/50">No images found.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {items.map((item) => (
+            <div
+              key={item._id}
+              className={`overflow-hidden rounded-xl bg-[#202020] p-2 ${pressed}`}
             >
-              Delete
-            </button>
-          </div>
-        ))}
-      </div>
+              <div className="relative aspect-square overflow-hidden rounded-lg">
+                <Image
+                  src={item.imgUrl}
+                  alt={title}
+                  fill
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                  className="object-cover"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void onDelete(item._id)}
+                className="mt-3 w-full rounded-lg bg-red-950/70 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-900"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -87,102 +206,273 @@ function EventsSection({ secret }: { secret: string }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/docs", { cache: "no-store" });
-    const data = await res.json();
-    setDocs(data.docs ?? []);
+    try {
+      const res = await fetch("/api/docs", { cache: "no-store" });
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Events load nahi ho paaye.");
+      }
+
+      setDocs(Array.isArray(data.docs) ? data.docs : []);
+    } catch (error) {
+      setMsg(
+        error instanceof Error ? error.message : "Events load nahi ho paaye."
+      );
+    }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  async function onUpload(e: React.FormEvent<HTMLFormElement>) {
+  async function onUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     const form = e.currentTarget;
     setBusy(true);
     setMsg("");
-    const res = await fetch("/api/docs", {
-      method: "POST",
-      headers: { "x-admin-secret": secret },
-      body: new FormData(form),
-    });
-    const data = await res.json();
-    setMsg(data.message || (res.ok ? "Created" : "Failed"));
-    if (res.ok) { form.reset(); load(); }
-    setBusy(false);
+
+    try {
+      const res = await fetch("/api/docs", {
+        method: "POST",
+        headers: {
+          "x-admin-secret": secret,
+        },
+        body: new FormData(form),
+      });
+
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Document upload failed.");
+      }
+
+      setMsg(data.message || "Document uploaded successfully.");
+      form.reset();
+      await load();
+    } catch (error) {
+      setMsg(
+        error instanceof Error ? error.message : "Document upload failed."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this event?")) return;
-    const res = await fetch(`/api/docs/${id}`, {
-      method: "DELETE",
-      headers: { "x-admin-secret": secret },
-    });
-    const data = await res.json();
-    setMsg(data.message || "");
-    if (res.ok) load();
+    if (!window.confirm("Delete this event document?")) return;
+
+    setMsg("");
+
+    try {
+      const res = await fetch(
+        `/api/docs/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "x-admin-secret": secret,
+          },
+        }
+      );
+
+      const data = await readResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data.message || "Document delete failed.");
+      }
+
+      setMsg(data.message || "Document deleted.");
+      await load();
+    } catch (error) {
+      setMsg(
+        error instanceof Error ? error.message : "Document delete failed."
+      );
+    }
   }
 
   return (
-    <section className={`${raised} p-6`}>
-      <h2 className="mb-4 text-xl font-semibold text-[#FF6B4A]">Events (PDF)</h2>
-      <form onSubmit={onUpload} className="grid gap-3 sm:grid-cols-2">
-        <input name="eventName" placeholder="Event name" required className={input} />
-        <input name="eventDate" type="date" required className={input} />
-        <textarea name="description" placeholder="Description" required rows={3} className={`${input} sm:col-span-2`} />
-        <input name="pdf" type="file" accept="application/pdf" required className={input} />
+    <section className={`rounded-2xl bg-[#1A1A1A] p-5 sm:p-7 ${raised}`}>
+      <h2 className="mb-5 text-xl font-bold text-[#EDEDED]">
+        Events / Documents
+      </h2>
+
+      <form onSubmit={onUpload} className="mb-6 space-y-4">
+        <input
+          className={input}
+          type="text"
+          name="eventName"
+          placeholder="Event name"
+          required
+        />
+
+        <input
+          className={input}
+          type="date"
+          name="eventDate"
+          required
+        />
+
+        <input
+          className={input}
+          type="file"
+          name="file"
+          accept="application/pdf,.pdf"
+          required
+        />
+
         <button type="submit" disabled={busy} className={redBtn}>
-          {busy ? "Uploading..." : "Add event"}
+          {busy ? "Uploading..." : "Upload Document"}
         </button>
       </form>
-      {msg && <p className="mt-3 text-sm text-[#EDEDED]/80">{msg}</p>}
-      <ul className="mt-5 space-y-3">
-        {docs.map((d) => (
-          <li key={d._id} className={`${pressed} flex items-center justify-between rounded-xl px-4 py-3`}>
-            <span className="text-[#EDEDED]">
-              {d.eventName}
-              <span className="ml-2 text-xs text-[#EDEDED]/50">
-                {d.eventDate ? new Date(d.eventDate).toLocaleDateString("en-IN") : ""}
-              </span>
-            </span>
-            <button onClick={() => onDelete(d._id)} className="text-sm text-[#FF6B4A] hover:text-white">
-              Delete
-            </button>
-          </li>
-        ))}
-      </ul>
+
+      {msg && (
+        <p
+          role="status"
+          className="mb-4 break-words text-sm text-[#FF8A70]"
+        >
+          {msg}
+        </p>
+      )}
+
+      {docs.length === 0 ? (
+        <p className="text-sm text-white/50">No event documents found.</p>
+      ) : (
+        <div className="space-y-3">
+          {docs.map((doc) => (
+            <div
+              key={doc._id}
+              className={`flex flex-col gap-3 rounded-xl bg-[#202020] p-4 sm:flex-row sm:items-center sm:justify-between ${pressed}`}
+            >
+              <div className="min-w-0">
+                <p className="break-words font-semibold text-[#EDEDED]">
+                  {doc.eventName}
+                </p>
+
+                <p className="mt-1 text-sm text-white/50">
+                  {doc.eventDate}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void onDelete(doc._id)}
+                className="rounded-lg bg-red-950/70 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-900"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
 
-export default function AdminPage() {
+function AdminPageContent() {
   const { secret } = useParams<{ secret: string }>();
-  const [status, setStatus] = useState<"checking" | "ok" | "denied">("checking");
+
+  const [status, setStatus] = useState<"checking" | "ok" | "denied">(
+    "checking"
+  );
 
   useEffect(() => {
-    fetch("/api/admin/verify", { headers: { "x-admin-secret": secret } })
-      .then((r) => setStatus(r.ok ? "ok" : "denied"))
-      .catch(() => setStatus("denied"));
+    let cancelled = false;
+
+    async function verifyAdmin() {
+      try {
+        const res = await fetch("/api/admin/verify", {
+          headers: {
+            "x-admin-secret": secret,
+          },
+          cache: "no-store",
+        });
+
+        if (!cancelled) {
+          setStatus(res.ok ? "ok" : "denied");
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus("denied");
+        }
+      }
+    }
+
+    void verifyAdmin();
+
+    return () => {
+      cancelled = true;
+    };
   }, [secret]);
 
   if (status === "checking") {
-    return <div className="min-h-screen bg-[#1A1A1A] pt-32 text-center text-[#EDEDED]/70">Checking...</div>;
+    return (
+      <main className="min-h-screen bg-[#1A1A1A] px-4 pt-32 text-center text-[#EDEDED]/70">
+        Verifying admin access...
+      </main>
+    );
   }
+
   if (status === "denied") {
     return (
-      <div className="min-h-screen bg-[#1A1A1A] pt-32 text-center">
-        <h1 className="text-5xl font-bold text-[#EDEDED]">404</h1>
-        <p className="mt-2 text-[#EDEDED]/60">This page could not be found.</p>
-      </div>
+      <main className="min-h-screen bg-[#1A1A1A] px-4 pt-32 text-center">
+        <h1 className="text-3xl font-bold text-[#E52200]">404</h1>
+        <p className="mt-3 text-[#EDEDED]/70">
+          Admin page not found or access denied.
+        </p>
+      </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#1A1A1A] px-4 pb-16 pt-28 sm:px-6">
-      <div className="mx-auto max-w-5xl space-y-8">
-        <h1 className="text-center text-4xl font-semibold text-[#EDEDED]">Admin Panel</h1>
-        <EventsSection secret={secret} />
-        <ImageSection title="Darshan Gallery (max 5 per upload)" endpoint="/api/gallery" listKey="images" secret={secret} />
-        <ImageSection title="Hero Images" endpoint="/api/hero" listKey="heroImages" secret={secret} />
+    <main className="min-h-screen bg-[#1A1A1A] px-4 pb-16 pt-28 text-[#EDEDED] sm:px-6">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-8">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#FF6B4A]">
+            Temple Management
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
+            Admin Dashboard
+          </h1>
+
+          <p className="mt-2 text-sm text-white/50">
+            Manage event documents and temple images.
+          </p>
+        </header>
+
+        <div className="space-y-8">
+          <EventsSection secret={secret} />
+
+          <ImageSection
+            title="Gallery Images"
+            endpoint="/api/gallery"
+            listKey="images"
+            secret={secret}
+          />
+
+          <ImageSection
+            title="Hero Images"
+            endpoint="/api/hero"
+            listKey="images"
+            secret={secret}
+          />
+        </div>
       </div>
     </main>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#1A1A1A] px-4 pt-32 text-center text-[#EDEDED]/70">
+          Loading admin dashboard...
+        </main>
+      }
+    >
+      <AdminPageContent />
+    </Suspense>
   );
 }

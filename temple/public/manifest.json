@@ -1,0 +1,21 @@
+{
+  "name": "Swayambhu Shivling Temple",
+  "short_name": "Shivling Temple",
+  "description": "Sacred Darshan & Divine Blessings",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#f97316",
+  "icons": [
+    {
+      "src": "/temple-og-image.jpg",
+      "sizes": "192x192",
+      "type": "image/jpg"
+    },
+    {
+      "src": "/temple-og-image.jpg",
+      "sizes": "512x512",
+      "type": "image/jpg"
+    }
+  ]
+}

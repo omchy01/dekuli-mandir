@@ -118,7 +118,7 @@ export default function About() {
       }
     },
     datePublished: '2024-01-01',
-    dateModified: new Date().toISOString(),
+    dateModified: '2026-10-23',
     mainEntityOfPage: {
       '@type': 'WebPage',
       '@id': 'https://dekulimandir.com/About'
